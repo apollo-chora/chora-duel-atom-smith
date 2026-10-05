@@ -1,0 +1,32 @@
+# duel_atom_smith — per-sub-agent model + prompt config.
+#
+# AGENT-DRIVEN tiering (CR mana-is-quota-not-model-selector 2026-06-01): this
+# YAML is the single source of truth for the sub-agent's model tier. The crew
+# constructs ONE modelgatewayclient per sub-agent from primary_model (routed
+# through chora-model-gateway per ADR-177). fallback_models is the
+# agent-DECLARED fallback chain (advisory until a future gateway cutover, same
+# shape as qgen/moderation).
+#
+# Mana is a token-budget QUOTA system (manaplugin gate), NOT a model selector —
+# the old tieredmodelplugin is no longer registered. See
+# feedback_mana_is_quota_not_model_selector.
+#
+# Tiers (locked 2026-06-01, mirroring qgen's convention):
+#   HIGH  = gemini-3.1-pro-preview → gemini-2.5-pro    (reasoning / judgement-heavy)
+#   CHEAP = gemini-3.5-flash       → gemini-2.5-flash  (classification / labelling)
+#
+# duel_atom_smith is a P1 single-agent (smith). Per-agent tiering:
+#   - smith: CHEAP. The duel path runs inside processMatch's 10s ctx and MCQ
+#     selection/generation is a bounded task. The cheap Flash tier is the
+#     correct fit and keeps the high-volume duel path inexpensive.
+#
+# 3.x models are global-endpoint-only; the gateway must serve them from a
+# global location (a verified strict superset). prompt_version selects the
+# composer template version (currently the embedded v1).
+agent: duel_atom_smith
+sub_agents:
+  smith:
+    tier: cheap
+    primary_model: gemini-3.5-flash
+    fallback_models: [gemini-2.5-flash]
+    prompt_version: v1
