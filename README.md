@@ -1,83 +1,142 @@
 # chora-duel-atom-smith
 
-Standalone Go ADK agent crew — the **duel_atom_smith** (P1 single-agent with
-a `web_research` tool). The smith picks duel atoms from the shared-atom
-candidate pool (passed in session state by chora-sharing — agents have NO DB
-access, cross-DB forbidden) and generates fresh ephemeral MCQ atoms for any
-shortfall, with a `web_research` tool (gateway GroundedSearch RPC, ADR-231)
-when candidates/knowledge are insufficient.
+## About
 
-Module path: `github.com/apollo-chora/chora-duel-atom-smith`.
+`chora-duel-atom-smith` is a standalone Go service built with Google ADK. Its `smith` agent assembles duel rounds by selecting suitable atoms from a candidate pool and generating fresh multiple-choice questions when more atoms are needed. The agent can use the `web_research` tool, backed by the Chora model gateway's GroundedSearch RPC, when the supplied candidates are insufficient or facts need verification.
 
-The crew is cloud-neutral: model calls route to chora-model-gateway over gRPC
-(via `chora-adk-common/modelgatewayclient`), traces go to standard OTLP (via
-`chora-adk-common/tracing` → `chora-common/otel`), and secrets are env-backed.
-No cloud account or managed service is required. The crew uses **no database
-and no NATS** — it is a stateless HTTP agent (in-memory sessions require
-replicas=1).
+The service does not access a database or NATS. It keeps ADK sessions in memory and routes model calls to `chora-model-gateway` over gRPC.
 
-## Serving
+## Quick start
 
-The binary serves the ADK agentengine web-mode REST API on port **8080**:
+Prerequisites:
 
-```
-POST /api/reasoning_engine      {"class_method":"async_create_session","input":{...}}
-POST /api/stream_reasoning_engine {"class_method":"async_stream_query","input":{...}}
+- Go 1.26.6 or newer
+- Access to a Chora model gateway
+- A gateway tenant ID and user GCID
+- A gateway bearer token unless using the local plaintext development mode
+
+For local development with a gateway running on the host, copy the example environment file and fill in the required tenant and GCID values:
+
+```sh
+cp .env.example .env
+go run ./cmd/duel_atom_smith web -port 8080 agentengine
 ```
 
-Callers create the session via `async_create_session` and pass the duel
-context in session state:
+The example configuration uses `host.docker.internal:9090` and `CHORA_GATEWAY_INSECURE=1` for a local gateway. For a deployed gateway, set `CHORA_GATEWAY_ENDPOINT`, `CHORA_GATEWAY_TOKEN`, and the tenant identity variables appropriately.
 
+To build the binary:
+
+```sh
+go build -o duel_atom_smith ./cmd/duel_atom_smith
+./duel_atom_smith web -port 8080 agentengine
 ```
-state: {
-  tenant_id:          "<tenant-uuid>",   // required by tenant propagation
-  user_gcid:         "<gcid>",          // required by tenant propagation
-  candidates_json:   "[...]",            // JSON array of {index, question, options}
-  shared_tags_json:  "[...]",            // JSON array of strings
-  proficiencies_json:"[...]",            // JSON array of ints
-  profiles_json:     "{...}",            // JSON map[string]string
-  count:             3,                  // target atom count
+
+## Usage
+
+The service exposes the ADK Agent Engine web-mode API on port 8080 by default. The container image starts the same web launcher with:
+
+```text
+web -port 8080 agentengine
+```
+
+Create a session with `async_create_session`, then stream a query with `async_stream_query`:
+
+```http
+POST /api/reasoning_engine
+Content-Type: application/json
+
+{"class_method":"async_create_session","input":{...}}
+```
+
+```http
+POST /api/stream_reasoning_engine
+Content-Type: application/json
+
+{"class_method":"async_stream_query","input":{...}}
+```
+
+The caller supplies duel context in the session state. The smith reads these keys on each turn:
+
+```text
+tenant_id           string
+user_gcid           string
+candidates_json     JSON array of {index, question, options}
+shared_tags_json    JSON array of strings
+proficiencies_json  JSON array of integers
+profiles_json       JSON object/map of player profile strings
+count               target atom count
+```
+
+The smith returns JSON in this shape:
+
+```json
+{
+  "picks": [0, 2],
+  "generated": [
+    {
+      "question": "Example question",
+      "options": ["A", "B", "C", "D"],
+      "correct_answer": "B"
+    }
+  ]
 }
 ```
 
-## Packages
+`picks` contains candidate indexes. `generated` contains new MCQs. The prompt requires the combined count of picks and generated atoms to equal the requested `count`, generated questions to have exactly four options, and `correct_answer` to match one option exactly.
 
-| Package | Purpose |
-|---|---|
-| `cmd/duel_atom_smith/` | Entry point — wires the smith sub-agent, the web_research tool, the tenant-propagation + termination plugins, and the ADK launcher. |
-| `internal/agent/` | The smith composer (pure, deterministic 6-block CREATE prompt), the ADR-197 condition extractor, and the per-turn instruction provider. |
-| `internal/agentconfig/` | Build-time per-sub-agent model + prompt config (embedded YAML — the single source of truth for tier / primary_model / fallback_models / prompt_version). |
-| `internal/tool/` | The `web_research` functiontool — a pure-function adapter over the model-gateway GroundedSearch RPC. |
+Configuration is environment-based:
 
-## Configuration
-
-| Variable | Purpose | Local default |
+| Variable | Description | Default |
 | --- | --- | --- |
-| `CHORA_GATEWAY_ENDPOINT` | model-gateway gRPC endpoint | `gateway.chora.site:443` |
-| `CHORA_GATEWAY_TOKEN` | Static bearer token for authenticated gateway calls | unset |
-| `CHORA_GATEWAY_INSECURE` | Plaintext gRPC to a local gateway (dev only) | unset |
-| `CHORA_GATEWAY_AUDIENCE` | Audience the gateway token was minted for (informational) | `https://gateway.chora.site` |
-| `CHORA_GATEWAY_TENANT_ID` | Process fallback tenant (per-request values come from session state) | unset (required) |
-| `CHORA_GATEWAY_GCID` | Process fallback gcid (per-request values come from session state) | unset (required) |
-| `DUEL_ATOM_SMITH_MODEL` | Override the smith primary model (agentconfig YAML) | from YAML |
-| `DUEL_ATOM_SMITH_SESSION_APP_NAME` | ADK session app name | `chora-duel-atom-smith` |
-| `CHORA_ENV` | dev \| staging \| prod | `dev` |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP/gRPC trace endpoint | stdout |
-| `CHORA_SERVICE_VERSION` | Stamped as the OTLP `service.version` attribute | `dev` |
+| `CHORA_GATEWAY_ENDPOINT` | Model gateway gRPC endpoint | `gateway.chora.site:443` |
+| `CHORA_GATEWAY_TOKEN` | Bearer token used for authenticated gateway calls | unset |
+| `CHORA_GATEWAY_INSECURE` | Use plaintext gRPC for local development | unset |
+| `CHORA_GATEWAY_AUDIENCE` | Gateway token audience | `https://gateway.chora.site` |
+| `CHORA_GATEWAY_TENANT_ID` | Process-level fallback tenant ID | unset |
+| `CHORA_GATEWAY_GCID` | Process-level fallback user GCID | unset |
+| `DUEL_ATOM_SMITH_MODEL` | Override the configured smith primary model | configured value |
+| `DUEL_ATOM_SMITH_SESSION_APP_NAME` | ADK session application name | `chora-duel-atom-smith` |
+| `CHORA_ENV` | Environment name | `dev` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP/gRPC trace endpoint | stdout when unset |
+| `CHORA_SERVICE_VERSION` | OTLP `service.version` value | `dev` |
 
-## Build and test
+The smith model configuration is embedded in `internal/agentconfig/duel_atom_smith.yaml`. It currently declares the `cheap` tier with `gemini-3.5-flash` as the primary model and `gemini-2.5-flash` as the fallback.
 
-```sh
-go build ./...
-go vet ./...
-go test ./...
-```
-
-The suite is hermetic — no broker, database, gateway, or network is required.
-
-## Docker
+To run the container image:
 
 ```sh
 docker build -t chora-duel-atom-smith .
 docker run --env-file .env -p 8080:8080 chora-duel-atom-smith
 ```
+
+The service uses in-memory sessions, so deployment with multiple replicas is not supported without an external session store.
+
+## Development
+
+The repository is a Go module:
+
+```text
+github.com/apollo-chora/chora-duel-atom-smith
+```
+
+The main packages are:
+
+| Path | Purpose |
+| --- | --- |
+| `cmd/duel_atom_smith/` | Service entry point and ADK launcher wiring |
+| `internal/agent/` | Prompt composition, session-state decoding, and per-turn instruction provider |
+| `internal/agentconfig/` | Embedded smith model and prompt configuration |
+| `internal/tool/` | `web_research` adapter for the model gateway GroundedSearch RPC |
+
+Run the repository checks with:
+
+```sh
+gofmt -w .
+go mod tidy
+go vet ./...
+go test ./...
+```
+
+CI runs formatting checks, verifies that `go mod tidy` produces no module changes, then runs `go vet ./...` and `go test ./...`.
+
+The test suite covers prompt composition, session-state handling, agent configuration, gateway configuration, and the `web_research` tool. It does not require a running broker, database, or gateway.
