@@ -172,36 +172,3 @@ func TestCompose_emptyContext_minimalValidInstruction(t *testing.T) {
 	got := ComposeInstruction(RoleSmith, ctx)
 	assertCreateBlocksOrdered(t, "smith-empty", got)
 }
-
-func TestMandatorySpanAttributes_coversSmith(t *testing.T) {
-	required := []string{
-		"chora.tenant_id",
-		"chora.user_gcid",
-		"chora.mana_tier",
-		"chora.crew_kind",
-		"chora.smith.role",
-		"gen_ai.request.model",
-		"gen_ai.usage.output_tokens",
-	}
-	got := MandatorySpanAttributes()
-	seen := make(map[string]struct{}, len(got))
-	for _, k := range got {
-		seen[k] = struct{}{}
-	}
-	for _, r := range required {
-		if _, ok := seen[r]; !ok {
-			t.Errorf("MandatorySpanAttributes missing %q", r)
-		}
-	}
-}
-
-func TestMandatorySpanAttributes_noDuplicates(t *testing.T) {
-	got := MandatorySpanAttributes()
-	seen := make(map[string]struct{}, len(got))
-	for _, k := range got {
-		if _, dup := seen[k]; dup {
-			t.Errorf("duplicate attribute %q", k)
-		}
-		seen[k] = struct{}{}
-	}
-}

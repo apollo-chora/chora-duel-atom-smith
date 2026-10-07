@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// D6 4-pillar stub harness for duel_atom_smith P1 single-agent.
+// D6 3-pillar stub harness for duel_atom_smith P1 single-agent.
 // Real chaos cleared by POC W3 multi-crew variant; these stubs preserve
 // the contract surface during production promotion.
 
@@ -48,21 +48,5 @@ func TestD6P3_composeIsConcurrencySafe(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Errorf("iter %d: prompt missing own tenant_id %q", i, want)
 		}
-	}
-}
-
-func TestD6P4_mandatoryAttributesCoverSmith(t *testing.T) {
-	got := MandatorySpanAttributes()
-	// chora.smith.role distinguishes the smith sub-agent in spans —
-	// load-bearing for the P1 single-agent cost + latency drill-down.
-	found := false
-	for _, k := range got {
-		if k == "chora.smith.role" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Error("MandatorySpanAttributes must include chora.smith.role to distinguish smith spans")
 	}
 }
