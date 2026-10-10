@@ -26,7 +26,7 @@
 //
 // Env vars (NEVER inlined per feedback_no_inline_config):
 //
-//	DUEL_ATOM_SMITH_MODEL         — override smith primary (default from agentconfig YAML: gemini-3.5-flash)
+//	DUEL_ATOM_SMITH_MODEL         — override smith primary (default from agentconfig YAML: longcat-2.5-preview)
 //	CHORA_GATEWAY_ENDPOINT        — model-gateway gRPC endpoint (gateway.chora.site:443)
 //	CHORA_GATEWAY_TENANT_ID       — process fallback tenant (per-request from session state)
 //	CHORA_GATEWAY_GCID            — process fallback gcid (per-request from session state)
@@ -105,11 +105,14 @@ func main() {
 
 	sessionAppName := envOr("DUEL_ATOM_SMITH_SESSION_APP_NAME", "chora-duel-atom-smith")
 
-	// AGENT-DRIVEN tiering (CR mana-is-quota-not-model-selector 2026-06-01):
-	// per-sub-agent model + fallback chain are config-declared in the embedded
-	// agentconfig YAML (single source of truth). smith = CHEAP
-	// (gemini-3.5-flash → gemini-2.5-flash). The duel path runs inside
-	// processMatch's 10s ctx and MCQ selection/generation is a bounded task.
+	// AGENT-DRIVEN model selection (CR mana-is-quota-not-model-selector
+	// 2026-06-01): the per-sub-agent model + fallback chain are config-declared
+	// in the embedded agentconfig YAML (single source of truth). Single-provider
+	// deployment (2026-10): smith dispatches the one logical model id
+	// longcat-2.5-preview as primary and as its only fallback — the former
+	// HIGH/CHEAP tiering collapsed into that one route. The duel path runs
+	// inside processMatch's 10s ctx and MCQ selection/generation is a bounded
+	// task.
 	cfg, err := agentconfig.DuelAtomSmith()
 	if err != nil {
 		log.Fatalf("duel_atom_smith: load agent config: %v", err)
@@ -240,7 +243,7 @@ func main() {
 	// 2026-06-01, user directive — mirrors qgen/moderation/familiar). Mana is
 	// a token-budget QUOTA system — it must NOT dictate which LLM model is
 	// used. Model selection is AGENT-DRIVEN via the per-sub-agent agentconfig
-	// YAML (smith=cheap gemini-3.5-flash).
+	// YAML (smith dispatches longcat-2.5-preview).
 
 	// MaxIterations = 5 — allows ≤2 web-research rounds + final answer.
 	// The smith is a P1 single-agent: pick/generate → (optional web_research)

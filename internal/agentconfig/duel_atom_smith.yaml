@@ -1,32 +1,34 @@
 # duel_atom_smith — per-sub-agent model + prompt config.
 #
-# AGENT-DRIVEN tiering (CR mana-is-quota-not-model-selector 2026-06-01): this
-# YAML is the single source of truth for the sub-agent's model tier. The crew
-# constructs ONE modelgatewayclient per sub-agent from primary_model (routed
+# AGENT-DRIVEN model selection (CR mana-is-quota-not-model-selector 2026-06-01):
+# this YAML is the single source of truth for the sub-agent's model route. The
+# crew constructs ONE modelgatewayclient per sub-agent from primary_model (routed
 # through chora-model-gateway per ADR-177). fallback_models is the
-# agent-DECLARED fallback chain (advisory until a future gateway cutover, same
+# agent-DECLARED fallback chain, forwarded to the gateway per sub-agent (same
 # shape as qgen/moderation).
 #
 # Mana is a token-budget QUOTA system (manaplugin gate), NOT a model selector —
 # the old tieredmodelplugin is no longer registered. See
 # feedback_mana_is_quota_not_model_selector.
 #
-# Tiers (locked 2026-06-01, mirroring qgen's convention):
-#   HIGH  = gemini-3.1-pro-preview → gemini-2.5-pro    (reasoning / judgement-heavy)
-#   CHEAP = gemini-3.5-flash       → gemini-2.5-flash  (classification / labelling)
+# Model route (single-provider deployment, 2026-10): every text-generation
+# sub-agent below uses the one logical model id
+#   longcat-2.5-preview  →  longcat-2.5-preview
+# The former HIGH/CHEAP tiering collapsed into this single route; the tier field
+# is retained only as a role label (smith = cheap/first-pass bounded MCQ work)
+# and no longer selects a model.
 #
-# duel_atom_smith is a P1 single-agent (smith). Per-agent tiering:
-#   - smith: CHEAP. The duel path runs inside processMatch's 10s ctx and MCQ
-#     selection/generation is a bounded task. The cheap Flash tier is the
-#     correct fit and keeps the high-volume duel path inexpensive.
+# duel_atom_smith is a P1 single-agent (smith):
+#   - smith: the duel path runs inside processMatch's 10s ctx and MCQ
+#     selection/generation is a bounded task, so the single route above is the
+#     correct fit for the high-volume duel path.
 #
-# 3.x models are global-endpoint-only; the gateway must serve them from a
-# global location (a verified strict superset). prompt_version selects the
-# composer template version (currently the embedded v1).
+# prompt_version selects the composer template version (currently the embedded
+# v1).
 agent: duel_atom_smith
 sub_agents:
   smith:
     tier: cheap
-    primary_model: gemini-3.5-flash
-    fallback_models: [gemini-2.5-flash]
+    primary_model: longcat-2.5-preview
+    fallback_models: [longcat-2.5-preview]
     prompt_version: v1

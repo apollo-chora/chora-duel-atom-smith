@@ -13,13 +13,13 @@ func TestDuelAtomSmith_TierLadders(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "duel_atom_smith", cfg.Agent)
 
-	// CHEAP tier — smith (MCQ selection/generation; bounded task inside the
-	// duel path's 10s ctx).
+	// Single model route — smith (MCQ selection/generation; bounded task inside
+	// the duel path's 10s ctx). The tier field is a role label only.
 	smith, err := cfg.Sub("smith")
 	require.NoError(t, err)
 	assert.Equal(t, "cheap", smith.Tier)
-	assert.Equal(t, "gemini-3.5-flash", smith.PrimaryModel)
-	assert.Equal(t, []string{"gemini-2.5-flash"}, smith.FallbackModels)
+	assert.Equal(t, "longcat-2.5-preview", smith.PrimaryModel)
+	assert.Equal(t, []string{"longcat-2.5-preview"}, smith.FallbackModels)
 	assert.Equal(t, "v1", smith.PromptVersion)
 }
 

@@ -100,7 +100,7 @@ Configuration is environment-based:
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP/gRPC trace endpoint | stdout when unset |
 | `CHORA_SERVICE_VERSION` | OTLP `service.version` value | `dev` |
 
-The smith model configuration is embedded in `internal/agentconfig/duel_atom_smith.yaml`. It currently declares the `cheap` tier with `gemini-3.5-flash` as the primary model and `gemini-2.5-flash` as the fallback.
+The smith model configuration is embedded in `internal/agentconfig/duel_atom_smith.yaml`. It declares the single logical model id `longcat-2.5-preview` as the primary model and as its only fallback; the former CHEAP/HIGH tiering has collapsed into that one route.
 
 To run the container image:
 
