@@ -81,8 +81,8 @@ func TestWebResearch_HappyPath(t *testing.T) {
 	if client.lastReq.ActionCode != "duel_atom_smith_web_research" {
 		t.Errorf("ActionCode = %q; want duel_atom_smith_web_research", client.lastReq.ActionCode)
 	}
-	if client.lastReq.LogicalModelId != "gemini-2.5-flash" {
-		t.Errorf("LogicalModelId = %q; want gemini-2.5-flash", client.lastReq.LogicalModelId)
+	if client.lastReq.LogicalModelId != "longcat-2.5-preview" {
+		t.Errorf("LogicalModelId = %q; want longcat-2.5-preview", client.lastReq.LogicalModelId)
 	}
 	if client.lastReq.MaxResults != 5 {
 		t.Errorf("MaxResults = %d; want 5", client.lastReq.MaxResults)

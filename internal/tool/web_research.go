@@ -111,7 +111,7 @@ func RunGroundedSearch(ctx context.Context, mgClient mgv1.ModelGatewayServiceCli
 		CrewKind:       "duel_atom_smith",
 		Directive:      q,
 		MaxResults:     5,
-		LogicalModelId: "gemini-2.5-flash",
+		LogicalModelId: "longcat-2.5-preview",
 		ActionCode:     "duel_atom_smith_web_research",
 		Traceparent:    traceparent,
 	})
