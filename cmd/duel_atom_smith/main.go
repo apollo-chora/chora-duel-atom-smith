@@ -136,9 +136,10 @@ func main() {
 	// Per-sub-agent model — route through chora-model-gateway (ADR-177 full
 	// mana umbrella). The LLM turn flows through the one chokepoint (central
 	// Model Armor, per-tenant budget, token-usage ledger). Model selection
-	// stays AGENT-DRIVEN (smith=CHEAP) via the agentconfig primary +
-	// forwarded fallback chain. Per-request tenant/gcid come from session
-	// state via the propagation plugin; env values are the process fallback.
+	// stays AGENT-DRIVEN (smith declares longcat-2.5-preview) via the
+	// agentconfig primary + forwarded fallback chain. Per-request tenant/gcid
+	// come from session state via the propagation plugin; env values are the
+	// process fallback.
 	gatewayEndpoint := envOr("CHORA_GATEWAY_ENDPOINT", "gateway.chora.site:443")
 	// D6 step 1: the token audience is read HERE and defaulted explicitly.
 	// modelgatewayclient still defaults it internally in TWO places
