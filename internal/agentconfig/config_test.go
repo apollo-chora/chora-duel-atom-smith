@@ -14,12 +14,14 @@ func TestDuelAtomSmith_TierLadders(t *testing.T) {
 	assert.Equal(t, "duel_atom_smith", cfg.Agent)
 
 	// CHEAP tier — smith (MCQ selection/generation; bounded task inside the
-	// duel path's 10s ctx).
+	// duel path's 10s ctx). The fallback repeats the primary on purpose: the
+	// deployment has one text route (LongCat-2.5-Preview), so there is nothing
+	// else to degrade to.
 	smith, err := cfg.Sub("smith")
 	require.NoError(t, err)
 	assert.Equal(t, "cheap", smith.Tier)
-	assert.Equal(t, "gemini-3.5-flash", smith.PrimaryModel)
-	assert.Equal(t, []string{"gemini-2.5-flash"}, smith.FallbackModels)
+	assert.Equal(t, "longcat-2.5-preview", smith.PrimaryModel)
+	assert.Equal(t, []string{"longcat-2.5-preview"}, smith.FallbackModels)
 	assert.Equal(t, "v1", smith.PromptVersion)
 }
 

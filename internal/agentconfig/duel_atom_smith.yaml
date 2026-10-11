@@ -11,22 +11,23 @@
 # the old tieredmodelplugin is no longer registered. See
 # feedback_mana_is_quota_not_model_selector.
 #
-# Tiers (locked 2026-06-01, mirroring qgen's convention):
-#   HIGH  = gemini-3.1-pro-preview → gemini-2.5-pro    (reasoning / judgement-heavy)
-#   CHEAP = gemini-3.5-flash       → gemini-2.5-flash  (classification / labelling)
+# The deployment's only text route is LongCat-2.5-Preview (registry entry
+# `longcat-2.5-preview`, api.longcat.ai), so the fallback repeats the primary:
+# there is one provider to degrade to, and the gateway de-duplicates an
+# identical (vendor, model) pair, so the chain collapses to a single target.
+# Give the smith a real second model the day the deployment has one.
 #
 # duel_atom_smith is a P1 single-agent (smith). Per-agent tiering:
 #   - smith: CHEAP. The duel path runs inside processMatch's 10s ctx and MCQ
-#     selection/generation is a bounded task. The cheap Flash tier is the
-#     correct fit and keeps the high-volume duel path inexpensive.
+#     selection/generation is a bounded task. The tier is a cost label, and with
+#     one text route the ladder is degenerate — CHEAP and HIGH resolve to the
+#     same model and cost the same; a second, cheaper model restores it.
 #
-# 3.x models are global-endpoint-only; the gateway must serve them from a
-# global location (a verified strict superset). prompt_version selects the
-# composer template version (currently the embedded v1).
+# prompt_version selects the composer template version (currently the embedded v1).
 agent: duel_atom_smith
 sub_agents:
   smith:
     tier: cheap
-    primary_model: gemini-3.5-flash
-    fallback_models: [gemini-2.5-flash]
+    primary_model: longcat-2.5-preview
+    fallback_models: [longcat-2.5-preview]
     prompt_version: v1

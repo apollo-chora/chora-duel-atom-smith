@@ -26,7 +26,7 @@
 //
 // Env vars (NEVER inlined per feedback_no_inline_config):
 //
-//	DUEL_ATOM_SMITH_MODEL         — override smith primary (default from agentconfig YAML: gemini-3.5-flash)
+//	DUEL_ATOM_SMITH_MODEL         — override smith primary (default from agentconfig YAML: longcat-2.5-preview)
 //	CHORA_GATEWAY_ENDPOINT        — model-gateway gRPC endpoint (gateway.chora.site:443)
 //	CHORA_GATEWAY_TENANT_ID       — process fallback tenant (per-request from session state)
 //	CHORA_GATEWAY_GCID            — process fallback gcid (per-request from session state)
@@ -108,8 +108,9 @@ func main() {
 	// AGENT-DRIVEN tiering (CR mana-is-quota-not-model-selector 2026-06-01):
 	// per-sub-agent model + fallback chain are config-declared in the embedded
 	// agentconfig YAML (single source of truth). smith = CHEAP
-	// (gemini-3.5-flash → gemini-2.5-flash). The duel path runs inside
-	// processMatch's 10s ctx and MCQ selection/generation is a bounded task.
+	// (longcat-2.5-preview — the deployment's one text route). The duel path
+	// runs inside processMatch's 10s ctx and MCQ selection/generation is a
+	// bounded task.
 	cfg, err := agentconfig.DuelAtomSmith()
 	if err != nil {
 		log.Fatalf("duel_atom_smith: load agent config: %v", err)
@@ -149,7 +150,7 @@ func main() {
 			"(process fallback; per-request values come from session state — no silent " +
 			"mis-attribution per ADR-169 + feedback_no_stubs_real_wiring)")
 	}
-	smithGemini, err := modelgatewayclient.New(ctx, smithGatewayConfig(crewKind, gatewayEndpoint, gatewayGCID, gatewayTenantID, smithCfg, smithModel, gatewayAudience))
+	smithLLM, err := modelgatewayclient.New(ctx, smithGatewayConfig(crewKind, gatewayEndpoint, gatewayGCID, gatewayTenantID, smithCfg, smithModel, gatewayAudience))
 	if err != nil {
 		log.Fatalf("duel_atom_smith: modelgatewayclient.New(smith, %s): %v", smithModel, err)
 	}
@@ -221,7 +222,7 @@ func main() {
 	// InstructionProvider takes precedence over the static Instruction field.
 	smithAgent, err := llmagent.New(llmagent.Config{
 		Name:        "smith",
-		Model:       smithGemini,
+		Model:       smithLLM,
 		Description: "Picks duel atoms from the shared-atom candidate pool + generates fresh MCQ atoms for any shortfall (CHEAP tier; bounded MCQ task inside the duel path's 10s ctx).",
 		InstructionProvider: promptstamping.WithStamping(
 			smithCfg.PromptVersion,
@@ -240,7 +241,7 @@ func main() {
 	// 2026-06-01, user directive — mirrors qgen/moderation/familiar). Mana is
 	// a token-budget QUOTA system — it must NOT dictate which LLM model is
 	// used. Model selection is AGENT-DRIVEN via the per-sub-agent agentconfig
-	// YAML (smith=cheap gemini-3.5-flash).
+	// YAML (smith=cheap longcat-2.5-preview).
 
 	// MaxIterations = 5 — allows ≤2 web-research rounds + final answer.
 	// The smith is a P1 single-agent: pick/generate → (optional web_research)
