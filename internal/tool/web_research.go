@@ -45,7 +45,10 @@ type WebResearchOutput struct {
 // model-gateway GroundedSearch RPC (ADR-231). The mgClient is the gRPC client
 // constructed in main.go with the same TLS + bearer-token dial as
 // modelgatewayclient (no shared helper exists, so main.go duplicates the dial).
-func NewWebResearchTool(mgClient mgv1.ModelGatewayServiceClient) (tool.Tool, error) {
+// logicalModelID is the caller's env-provided model id (DUEL_ATOM_SMITH_MODEL):
+// the grounding-capable route the gateway uses for this call. It is never a
+// literal — the agent has no compiled-in model name.
+func NewWebResearchTool(mgClient mgv1.ModelGatewayServiceClient, logicalModelID string) (tool.Tool, error) {
 	return functiontool.New(
 		functiontool.Config{
 			Name:        "web_research",
@@ -67,7 +70,7 @@ func NewWebResearchTool(mgClient mgv1.ModelGatewayServiceClient) (tool.Tool, err
 			if tctx != nil {
 				ctx = tctx
 			}
-			return RunGroundedSearch(ctx, mgClient, tenantID, gcid, traceparent, in.Query)
+			return RunGroundedSearch(ctx, mgClient, logicalModelID, tenantID, gcid, traceparent, in.Query)
 		},
 	)
 }
@@ -85,10 +88,11 @@ func stateStringFromTool(st interface{ Get(string) (any, error) }, key string) s
 // RunGroundedSearch executes the GroundedSearch RPC with explicit context +
 // identity fields. This is the testable core — separated from the
 // tool.Context adapter so unit tests can call it directly without
-// constructing a full ADK tool.Context. RPC errors are returned as tool
-// errors — the agent's instruction tells it to proceed without web data on
-// tool failure.
-func RunGroundedSearch(ctx context.Context, mgClient mgv1.ModelGatewayServiceClient, tenantID, gcid, traceparent, query string) (WebResearchOutput, error) {
+// constructing a full ADK tool.Context. logicalModelID is the caller's
+// env-provided model id (the grounding-capable route), never a literal. RPC
+// errors are returned as tool errors — the agent's instruction tells it to
+// proceed without web data on tool failure.
+func RunGroundedSearch(ctx context.Context, mgClient mgv1.ModelGatewayServiceClient, logicalModelID, tenantID, gcid, traceparent, query string) (WebResearchOutput, error) {
 	if mgClient == nil {
 		return WebResearchOutput{}, errors.New("web_research: model-gateway client is nil")
 	}
@@ -111,7 +115,7 @@ func RunGroundedSearch(ctx context.Context, mgClient mgv1.ModelGatewayServiceCli
 		CrewKind:       "duel_atom_smith",
 		Directive:      q,
 		MaxResults:     5,
-		LogicalModelId: "gemini-2.5-flash",
+		LogicalModelId: logicalModelID,
 		ActionCode:     "duel_atom_smith_web_research",
 		Traceparent:    traceparent,
 	})

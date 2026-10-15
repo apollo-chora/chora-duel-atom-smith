@@ -11,6 +11,11 @@ import (
 	"google.golang.org/grpc"
 )
 
+// testModelID is the model id the tool is handed by the caller — the same
+// env-provided value main.go threads through (DUEL_ATOM_SMITH_MODEL). The tool
+// carries no model name of its own.
+const testModelID = "env-duel-model"
+
 // fakeMGClient is a minimal ModelGatewayServiceClient for testing the
 // web_research tool without a live gateway. It implements Invoke,
 // GroundedSearch and Embed (the interface requires all three).
@@ -51,7 +56,7 @@ func TestWebResearch_HappyPath(t *testing.T) {
 		},
 	}
 
-	out, err := tool.RunGroundedSearch(context.Background(), client, "tenant-1", "gcid-1", "traceparent-1", "capital of France")
+	out, err := tool.RunGroundedSearch(context.Background(), client, testModelID, "tenant-1", "gcid-1", "traceparent-1", "capital of France")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -81,8 +86,8 @@ func TestWebResearch_HappyPath(t *testing.T) {
 	if client.lastReq.ActionCode != "duel_atom_smith_web_research" {
 		t.Errorf("ActionCode = %q; want duel_atom_smith_web_research", client.lastReq.ActionCode)
 	}
-	if client.lastReq.LogicalModelId != "gemini-2.5-flash" {
-		t.Errorf("LogicalModelId = %q; want gemini-2.5-flash", client.lastReq.LogicalModelId)
+	if client.lastReq.LogicalModelId != testModelID {
+		t.Errorf("LogicalModelId = %q; want the env-provided %q", client.lastReq.LogicalModelId, testModelID)
 	}
 	if client.lastReq.MaxResults != 5 {
 		t.Errorf("MaxResults = %d; want 5", client.lastReq.MaxResults)
@@ -106,7 +111,7 @@ func TestWebResearch_RPCError(t *testing.T) {
 		groundedErr: errors.New("rpc error: code = Unavailable"),
 	}
 
-	_, err := tool.RunGroundedSearch(context.Background(), client, "t", "g", "", "test query")
+	_, err := tool.RunGroundedSearch(context.Background(), client, testModelID, "t", "g", "", "test query")
 	if err == nil {
 		t.Fatal("expected error on RPC failure; got nil")
 	}
@@ -123,7 +128,7 @@ func TestWebResearch_TruncationAt120Runes(t *testing.T) {
 	// Build a query of 200 runes (each char is 1 rune).
 	longQuery := strings.Repeat("x", 200)
 
-	_, err := tool.RunGroundedSearch(context.Background(), client, "t", "g", "", longQuery)
+	_, err := tool.RunGroundedSearch(context.Background(), client, testModelID, "t", "g", "", longQuery)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -137,7 +142,7 @@ func TestWebResearch_TruncationAt120Runes(t *testing.T) {
 func TestWebResearch_EmptyQuery(t *testing.T) {
 	client := &fakeMGClient{}
 
-	_, err := tool.RunGroundedSearch(context.Background(), client, "t", "g", "", "   ")
+	_, err := tool.RunGroundedSearch(context.Background(), client, testModelID, "t", "g", "", "   ")
 	if err == nil {
 		t.Fatal("expected error on empty query; got nil")
 	}
@@ -147,7 +152,7 @@ func TestWebResearch_EmptyQuery(t *testing.T) {
 }
 
 func TestWebResearch_NilClient(t *testing.T) {
-	_, err := tool.RunGroundedSearch(context.Background(), nil, "t", "g", "", "test")
+	_, err := tool.RunGroundedSearch(context.Background(), nil, testModelID, "t", "g", "", "test")
 	if err == nil {
 		t.Fatal("expected error on nil client; got nil")
 	}

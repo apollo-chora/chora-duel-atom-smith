@@ -94,13 +94,14 @@ Configuration is environment-based:
 | `CHORA_GATEWAY_AUDIENCE` | Gateway token audience | `https://gateway.chora.site` |
 | `CHORA_GATEWAY_TENANT_ID` | Process-level fallback tenant ID | unset |
 | `CHORA_GATEWAY_GCID` | Process-level fallback user GCID | unset |
-| `DUEL_ATOM_SMITH_MODEL` | Override the configured smith primary model | configured value |
+| `DUEL_ATOM_SMITH_MODEL` | Gateway `logical_model_id` for the smith; required, no default | unset |
+| `DUEL_ATOM_SMITH_FALLBACK_MODELS` | Optional comma-separated fallback chain | unset |
 | `DUEL_ATOM_SMITH_SESSION_APP_NAME` | ADK session application name | `chora-duel-atom-smith` |
 | `CHORA_ENV` | Environment name | `dev` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP/gRPC trace endpoint | stdout when unset |
 | `CHORA_SERVICE_VERSION` | OTLP `service.version` value | `dev` |
 
-The smith model configuration is embedded in `internal/agentconfig/duel_atom_smith.yaml`. It currently declares the `cheap` tier with `gemini-3.5-flash` as the primary model and `gemini-2.5-flash` as the fallback.
+Model configuration is environment-only. The embedded configuration in `internal/agentconfig/duel_atom_smith.yaml` declares the smith's tier (`cheap`) and prompt version; the model itself comes from the required `DUEL_ATOM_SMITH_MODEL` env var and the optional `DUEL_ATOM_SMITH_FALLBACK_MODELS` comma list. No model name is compiled into the binary or the YAML, and boot fails when `DUEL_ATOM_SMITH_MODEL` is unset. The `web_research` tool sends the same env-provided id as the `GroundedSearch` request's `logical_model_id`.
 
 To run the container image:
 
