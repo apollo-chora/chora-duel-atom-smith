@@ -1,16 +1,16 @@
-// Package agentconfig holds the build-time, per-agent model + prompt
+// Package agentconfig holds the build-time, per-agent tier + prompt
 // configuration for the duel_atom_smith crew (AGENT-DRIVEN tiering,
 // CR mana-is-quota-not-model-selector 2026-06-01).
 //
 // Mirrors the moderation agentconfig pattern. The agent owns its OWN embedded
-// YAML (separation of concern) declaring, per sub-agent:
-// tier / primary_model / fallback_models / prompt_version. The agent reads its
-// config at boot and constructs ONE modelgatewayclient per sub-agent from
-// primary_model (routed through chora-model-gateway per ADR-177).
+// YAML (separation of concern) declaring, per sub-agent: tier /
+// prompt_version. The model itself is env-only: the crew reads the REQUIRED
+// DUEL_ATOM_SMITH_MODEL env var and constructs ONE modelgatewayclient per
+// sub-agent from it (routed through chora-model-gateway per ADR-177), with the
+// optional DUEL_ATOM_SMITH_FALLBACK_MODELS comma list as the declared chain.
 //
-// The YAML is the single source of truth; ops may override an individual
-// primary via env var for quick experiments, but fallback + tier + prompt
-// version stay config-declared.
+// No model name is declared in this package; a blank prompt_version is a
+// config error, never a silent default.
 //
 // Model selection is AGENT-DRIVEN — mana is a token-budget QUOTA system
 // (manaplugin gate), NOT a model selector. The old tieredmodelplugin is no
@@ -29,10 +29,8 @@ var duelAtomSmithYAML []byte
 
 // SubAgentConfig is one sub-agent's resolved model tier + prompt selection.
 type SubAgentConfig struct {
-	Tier           string   `yaml:"tier"`
-	PrimaryModel   string   `yaml:"primary_model"`
-	FallbackModels []string `yaml:"fallback_models"`
-	PromptVersion  string   `yaml:"prompt_version"`
+	Tier          string `yaml:"tier"`
+	PromptVersion string `yaml:"prompt_version"`
 }
 
 // AgentConfig is one agent binary's full per-sub-agent config.
@@ -41,16 +39,15 @@ type AgentConfig struct {
 	SubAgents map[string]SubAgentConfig `yaml:"sub_agents"`
 }
 
-// Sub returns the named sub-agent config, failing loud if the YAML omits it —
-// a missing sub-agent is a build/config error, never a silent default (per
-// feedback_no_stubs_real_wiring).
+// Sub returns the named sub-agent config, failing loud if the YAML omits it or
+// leaves its prompt_version blank — a missing sub-agent or an unversioned
+// prompt is a build/config error, never a silent default (per
+// feedback_no_stubs_real_wiring). The model id is not declared here: boot reads
+// it from the sub-agent's required env var.
 func (c AgentConfig) Sub(name string) (SubAgentConfig, error) {
 	sc, ok := c.SubAgents[name]
 	if !ok {
 		return SubAgentConfig{}, fmt.Errorf("agentconfig: agent %q has no sub-agent %q", c.Agent, name)
-	}
-	if sc.PrimaryModel == "" {
-		return SubAgentConfig{}, fmt.Errorf("agentconfig: agent %q sub-agent %q has empty primary_model", c.Agent, name)
 	}
 	if sc.PromptVersion == "" {
 		return SubAgentConfig{}, fmt.Errorf("agentconfig: agent %q sub-agent %q has empty prompt_version", c.Agent, name)

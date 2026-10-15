@@ -26,12 +26,13 @@
 //
 // Env vars (NEVER inlined per feedback_no_inline_config):
 //
-//	DUEL_ATOM_SMITH_MODEL         — override smith primary (default from agentconfig YAML: longcat-2.5-preview)
-//	CHORA_GATEWAY_ENDPOINT        — model-gateway gRPC endpoint (gateway.chora.site:443)
-//	CHORA_GATEWAY_TENANT_ID       — process fallback tenant (per-request from session state)
-//	CHORA_GATEWAY_GCID            — process fallback gcid (per-request from session state)
+//	DUEL_ATOM_SMITH_MODEL            — REQUIRED gateway logical_model_id (env-only; no default)
+//	DUEL_ATOM_SMITH_FALLBACK_MODELS  — optional comma-separated fallback chain (empty = none)
+//	CHORA_GATEWAY_ENDPOINT           — model-gateway gRPC endpoint (gateway.chora.site:443)
+//	CHORA_GATEWAY_TENANT_ID          — process fallback tenant (per-request from session state)
+//	CHORA_GATEWAY_GCID               — process fallback gcid (per-request from session state)
 //	DUEL_ATOM_SMITH_SESSION_APP_NAME — session app name (default chora-duel-atom-smith)
-//	CHORA_ENV                     — dev | staging | prod
+//	CHORA_ENV                        — dev | staging | prod
 //
 // The web server port is the ADK launcher's -port flag (default 8080), set in
 // the Dockerfile CMD.
@@ -40,6 +41,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"log"
 	"log/slog"
 	"os"
@@ -75,12 +77,50 @@ import (
 
 const crewKind = "duel_atom_smith"
 
+// Model env names (names only; values come from the container env per
+// feedback_no_inline_config). DUEL_ATOM_SMITH_MODEL is REQUIRED — boot fails
+// loud when it is unset rather than falling back to a literal model name.
+// DUEL_ATOM_SMITH_FALLBACK_MODELS is an optional comma-separated chain: unset
+// (the default) declares no fallback.
+const (
+	envSmithModel    = "DUEL_ATOM_SMITH_MODEL"
+	envSmithFallback = "DUEL_ATOM_SMITH_FALLBACK_MODELS"
+)
+
 // envOr returns os.Getenv(name) if non-empty, else fallback.
 func envOr(name, fallback string) string {
 	if v := os.Getenv(name); v != "" {
 		return v
 	}
 	return fallback
+}
+
+// requiredModel returns the env-provided gateway logical_model_id, failing loud
+// when the var is unset. Model ids are env-only: there is no literal default to
+// fall back to (feedback_no_inline_config).
+func requiredModel(name string) (string, error) {
+	v := strings.TrimSpace(os.Getenv(name))
+	if v == "" {
+		return "", fmt.Errorf("%s required (the gateway logical_model_id; env-only, no default)", name)
+	}
+	return v, nil
+}
+
+// fallbackModels parses a comma-separated env list into the declared fallback
+// chain. Unset / blank (the default) declares no chain, so the gateway is asked
+// for the primary target only.
+func fallbackModels(name string) []string {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return nil
+	}
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		if p := strings.TrimSpace(part); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func main() {
@@ -106,11 +146,9 @@ func main() {
 	sessionAppName := envOr("DUEL_ATOM_SMITH_SESSION_APP_NAME", "chora-duel-atom-smith")
 
 	// AGENT-DRIVEN tiering (CR mana-is-quota-not-model-selector 2026-06-01):
-	// per-sub-agent model + fallback chain are config-declared in the embedded
-	// agentconfig YAML (single source of truth). smith = CHEAP
-	// (longcat-2.5-preview — the deployment's one text route). The duel path
-	// runs inside processMatch's 10s ctx and MCQ selection/generation is a
-	// bounded task.
+	// the sub-agent's tier is config-declared in the embedded agentconfig YAML
+	// while its model id is env-only. smith = CHEAP. The duel path runs inside
+	// processMatch's 10s ctx and MCQ selection/generation is a bounded task.
 	cfg, err := agentconfig.DuelAtomSmith()
 	if err != nil {
 		log.Fatalf("duel_atom_smith: load agent config: %v", err)
@@ -119,7 +157,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("duel_atom_smith: %v", err)
 	}
-	smithModel := envOr("DUEL_ATOM_SMITH_MODEL", smithCfg.PrimaryModel)
+	smithModel, err := requiredModel(envSmithModel)
+	if err != nil {
+		log.Fatalf("duel_atom_smith: %v", err)
+	}
+	smithFallback := fallbackModels(envSmithFallback)
 
 	choraEnv := envOr("CHORA_ENV", "dev")
 
@@ -127,14 +169,14 @@ func main() {
 		"session_app_name", sessionAppName,
 		"smith_model", smithModel,
 		"smith_tier", smithCfg.Tier,
-		"smith_fallback", smithCfg.FallbackModels,
+		"smith_fallback", smithFallback,
 		"chora_env", choraEnv,
 	)
 
 	// Per-sub-agent model — route through chora-model-gateway (ADR-177 full
 	// mana umbrella). The LLM turn flows through the one chokepoint (central
 	// Model Armor, per-tenant budget, token-usage ledger). Model selection
-	// stays AGENT-DRIVEN (smith=CHEAP) via the agentconfig primary +
+	// stays AGENT-DRIVEN (smith=CHEAP) via the env-provided model +
 	// forwarded fallback chain. Per-request tenant/gcid come from session
 	// state via the propagation plugin; env values are the process fallback.
 	gatewayEndpoint := envOr("CHORA_GATEWAY_ENDPOINT", "gateway.chora.site:443")
@@ -150,7 +192,7 @@ func main() {
 			"(process fallback; per-request values come from session state — no silent " +
 			"mis-attribution per ADR-169 + feedback_no_stubs_real_wiring)")
 	}
-	smithLLM, err := modelgatewayclient.New(ctx, smithGatewayConfig(crewKind, gatewayEndpoint, gatewayGCID, gatewayTenantID, smithCfg, smithModel, gatewayAudience))
+	smithLLM, err := modelgatewayclient.New(ctx, smithGatewayConfig(crewKind, gatewayEndpoint, gatewayGCID, gatewayTenantID, smithModel, smithFallback, gatewayAudience))
 	if err != nil {
 		log.Fatalf("duel_atom_smith: modelgatewayclient.New(smith, %s): %v", smithModel, err)
 	}
@@ -200,7 +242,7 @@ func main() {
 	// RPC (ADR-231). Used when candidates don't cover the interests or facts
 	// need verification. The agent's instruction tells it to proceed without
 	// web data on tool failure.
-	webResearchTool, err := smithtool.NewWebResearchTool(mgClient)
+	webResearchTool, err := smithtool.NewWebResearchTool(mgClient, smithModel)
 	if err != nil {
 		log.Fatalf("duel_atom_smith: NewWebResearchTool: %v", err)
 	}
@@ -240,8 +282,8 @@ func main() {
 	// DELIBERATELY NOT registered here (CR mana-is-quota-not-model-selector
 	// 2026-06-01, user directive — mirrors qgen/moderation/familiar). Mana is
 	// a token-budget QUOTA system — it must NOT dictate which LLM model is
-	// used. Model selection is AGENT-DRIVEN via the per-sub-agent agentconfig
-	// YAML (smith=cheap longcat-2.5-preview).
+	// used. Model selection is AGENT-DRIVEN via the env-provided model id
+	// (smith=cheap tier).
 
 	// MaxIterations = 5 — allows ≤2 web-research rounds + final answer.
 	// The smith is a P1 single-agent: pick/generate → (optional web_research)
@@ -300,11 +342,11 @@ func (s staticTokenSource) Token() (*oauth2.Token, error) {
 // the crew id (ADR-254 D7): the D7 gateway refuses an unstamped Invoke
 // (FAILED_PRECONDITION surface_unstamped), so it is set here, once, and
 // asserted by a test; everything else is what the call always sent.
-func smithGatewayConfig(crewKind string, gatewayEndpoint string, gatewayGCID string, gatewayTenantID string, smithCfg agentconfig.SubAgentConfig, smithModel string, gatewayAudience string) modelgatewayclient.Config {
+func smithGatewayConfig(crewKind string, gatewayEndpoint string, gatewayGCID string, gatewayTenantID string, smithModel string, smithFallback []string, gatewayAudience string) modelgatewayclient.Config {
 	return modelgatewayclient.Config{
 		Endpoint:         gatewayEndpoint,
 		LogicalModelID:   smithModel,
-		FallbackModelIDs: smithCfg.FallbackModels,
+		FallbackModelIDs: smithFallback,
 		AgentID:          "duel_atom_smith",
 		CrewKind:         crewKind,
 		TenantID:         gatewayTenantID,
