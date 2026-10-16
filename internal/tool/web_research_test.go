@@ -3,11 +3,12 @@ package tool_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
-	mgv1 "github.com/apollo-chora/chora-contracts/gen/go/chora/services/model_gateway/v1"
 	"github.com/apollo-chora/chora-duel-atom-smith/internal/tool"
+	gatewayv1 "github.com/apollo-chora/chora-duel-atom-smith/internal/tool/gatewayv1"
 	"google.golang.org/grpc"
 )
 
@@ -15,20 +16,30 @@ import (
 // web_research tool without a live gateway. It implements Invoke,
 // GroundedSearch and Embed (the interface requires all three).
 type fakeMGClient struct {
-	groundedResp *mgv1.GroundedSearchResponse
+	groundedResp *gatewayv1.GroundedSearchResponse
 	groundedErr  error
-	lastReq      *mgv1.GroundedSearchRequest
+	lastReq      *gatewayv1.GroundedSearchRequest
 }
 
-func (f *fakeMGClient) Invoke(ctx context.Context, in *mgv1.InvokeRequest, opts ...grpc.CallOption) (*mgv1.InvokeResponse, error) {
+// InvokeStream and ListModels are not exercised by these tests; the
+// ModelGatewayServiceClient interface requires them.
+func (f *fakeMGClient) InvokeStream(ctx context.Context, in *gatewayv1.InvokeRequest, opts ...grpc.CallOption) (gatewayv1.ModelGatewayService_InvokeStreamClient, error) {
+	return nil, fmt.Errorf("fakeMGClient: InvokeStream not implemented")
+}
+
+func (f *fakeMGClient) ListModels(ctx context.Context, in *gatewayv1.ListModelsRequest, opts ...grpc.CallOption) (*gatewayv1.ListModelsResponse, error) {
+	return nil, fmt.Errorf("fakeMGClient: ListModels not implemented")
+}
+
+func (f *fakeMGClient) Invoke(ctx context.Context, in *gatewayv1.InvokeRequest, opts ...grpc.CallOption) (*gatewayv1.InvokeResponse, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (f *fakeMGClient) Embed(ctx context.Context, in *mgv1.EmbedRequest, opts ...grpc.CallOption) (*mgv1.EmbedResponse, error) {
+func (f *fakeMGClient) Embed(ctx context.Context, in *gatewayv1.EmbedRequest, opts ...grpc.CallOption) (*gatewayv1.EmbedResponse, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (f *fakeMGClient) GroundedSearch(ctx context.Context, in *mgv1.GroundedSearchRequest, opts ...grpc.CallOption) (*mgv1.GroundedSearchResponse, error) {
+func (f *fakeMGClient) GroundedSearch(ctx context.Context, in *gatewayv1.GroundedSearchRequest, opts ...grpc.CallOption) (*gatewayv1.GroundedSearchResponse, error) {
 	f.lastReq = in
 	if f.groundedErr != nil {
 		return nil, f.groundedErr
@@ -36,14 +47,14 @@ func (f *fakeMGClient) GroundedSearch(ctx context.Context, in *mgv1.GroundedSear
 	if f.groundedResp != nil {
 		return f.groundedResp, nil
 	}
-	return &mgv1.GroundedSearchResponse{}, nil
+	return &gatewayv1.GroundedSearchResponse{}, nil
 }
 
 func TestWebResearch_HappyPath(t *testing.T) {
 	client := &fakeMGClient{
-		groundedResp: &mgv1.GroundedSearchResponse{
+		groundedResp: &gatewayv1.GroundedSearchResponse{
 			GroundedAnswer: "Paris is the capital of France.",
-			Citations: []*mgv1.GroundedCitation{
+			Citations: []*gatewayv1.GroundedCitation{
 				{Uri: "https://example.com/paris", Title: "Paris - Wikipedia"},
 				{Uri: "https://example.com/france", Title: "France Geography"},
 			},
@@ -81,9 +92,9 @@ func TestWebResearch_HappyPath(t *testing.T) {
 	if client.lastReq.ActionCode != "duel_atom_smith_web_research" {
 		t.Errorf("ActionCode = %q; want duel_atom_smith_web_research", client.lastReq.ActionCode)
 	}
-	if client.lastReq.LogicalModelId != "gemini-2.5-flash" {
-		t.Errorf("LogicalModelId = %q; want gemini-2.5-flash", client.lastReq.LogicalModelId)
-	}
+	// The gateway resolves the grounded-search operation from the RPC method,
+	// so the caller sends no model id. The old contract carried a hardcoded
+	// "gemini-2.5-flash" here.
 	if client.lastReq.MaxResults != 5 {
 		t.Errorf("MaxResults = %d; want 5", client.lastReq.MaxResults)
 	}
@@ -117,7 +128,7 @@ func TestWebResearch_RPCError(t *testing.T) {
 
 func TestWebResearch_TruncationAt120Runes(t *testing.T) {
 	client := &fakeMGClient{
-		groundedResp: &mgv1.GroundedSearchResponse{},
+		groundedResp: &gatewayv1.GroundedSearchResponse{},
 	}
 
 	// Build a query of 200 runes (each char is 1 rune).

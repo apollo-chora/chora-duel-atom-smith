@@ -69,8 +69,7 @@ import (
 	smithagent "github.com/apollo-chora/chora-duel-atom-smith/internal/agent"
 	"github.com/apollo-chora/chora-duel-atom-smith/internal/agentconfig"
 	smithtool "github.com/apollo-chora/chora-duel-atom-smith/internal/tool"
-
-	mgv1 "github.com/apollo-chora/chora-contracts/gen/go/chora/services/model_gateway/v1"
+	gatewayv1 "github.com/apollo-chora/chora-duel-atom-smith/internal/tool/gatewayv1"
 )
 
 const crewKind = "duel_atom_smith"
@@ -193,7 +192,7 @@ func main() {
 		log.Fatalf("duel_atom_smith: grpc.NewClient(%s): %v", gatewayEndpoint, err)
 	}
 	defer mgConn.Close()
-	mgClient := mgv1.NewModelGatewayServiceClient(mgConn)
+	mgClient := gatewayv1.NewModelGatewayServiceClient(mgConn)
 
 	// web_research tool — grounded web search via the gateway's GroundedSearch
 	// RPC (ADR-231). Used when candidates don't cover the interests or facts
